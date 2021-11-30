@@ -21,6 +21,7 @@ from google.cloud import texttospeech
 from google.oauth2 import service_account
 import time
 import geocoder
+import sys
 
 #Sound Playing Initialization Section
 mixer.init() #Initialize Object for playing sounds
@@ -39,6 +40,24 @@ credentials = service_account.Credentials.from_service_account_file('./Credentia
 client = texttospeech.TextToSpeechClient(credentials=credentials) # Instantiates a client
 voice = texttospeech.VoiceSelectionParams(language_code="en-US", ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL) # Build the voice request, select the language code ("en-US") and the ssml. Voice gender ("neutral")
 audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3) # Select the type of audio file you want returned
+
+def readAPIKeys(txtFileName):
+    file1 = open('./Credentials/{}.txt'.format(txtFileName), 'r')
+    line = file1.readline()
+    file1.close()
+    return str(line)
+
+#Reading and setting all API Keys in attributes of a Class
+class apiKeysDef:
+    def __init__(self):
+        self.openWeatherMap = readAPIKeys('openWeatherMapAPI')
+        self.pvporcupine = readAPIKeys('pvporcupine')
+        self.serpAPI = readAPIKeys('serpAPI')
+        self.wolfram = readAPIKeys('wolfram')
+
+apiKeys = apiKeysDef()
+
+firstLoop = True
 
 def playVASound(sound):
     mixer.music.load(sound)
@@ -78,7 +97,7 @@ def search(query):
         speak(f"The time is {strTime}")
     elif "calculate" in query or "convert" in query or "time in" in query:
         try:
-            app_id = "96QTX6-TALTLTVTPQ"
+            app_id = apiKeys.wolfram
             client = wolframalpha.Client(app_id)
             if "calculate" in query:
                 indx = query.lower().split().index('calculate')
@@ -112,7 +131,7 @@ def search(query):
             params = {
             "engine": "google",
             "q": query,
-            "api_key": "ef7f93de292063df1ba777af7ae4d4d30b36bc3669f79679f844d4f7d8bb3b57",
+            "api_key": apiKeys.serpAPI,
             }
             search = GoogleSearch(params)
             results = search.get_dict()
@@ -125,8 +144,7 @@ def search(query):
         g = geocoder.ip('me') #Getting current location
         latitude, longitude = g.latlng
         if not math.isnan(latitude) and not math.isnan(longitude):
-            URL = ("http://api.openweathermap.org/data/2.5/forecast?lat=" + str(latitude) + '&lon=' + 
-            str(longitude) + "&appid=8ae65da1fe93a860acf4f80c5a75a851&cnt=1&units=metric")
+            URL = ("http://api.openweathermap.org/data/2.5/forecast?lat={}&lon={}&appid={}&cnt=1&units=metric".format(str(latitude),str(longitude),apiKeys.openWeatherMap))
             # HTTP request
             print("URL is: " + URL)
             response =  requests.get(URL)  # gets json output
@@ -144,21 +162,29 @@ def search(query):
                 report = data['list'][0]['weather'][0]['description']
                 pop = data['list'][0]['pop'] #current probability of precipitation
                 city = data['city']['name']
-                speak("The weather report for the city of " + str(city) + ' is as follows: in degrees celsius, current temperature, ' + str(round(temperature)) 
-                + ", minimum temperature, " + str(round(minTemp)) + ", maximum temperature, " + str(round(maxTemp)) + ', humidity, ' + str(round(humidity)) + 
-                '%, probability of precipitation within the next 3 hours, ' + str(round(pop*100)) + '%, the reported description of the weather is: ' + str(report) )
+                speak("""The weather report for the city of {} is as follows: in degrees celsius, current temperature, {}, minimum temperature, {}, maximum temperature, {}, humidity,
+                 {}%, probability of precipitation within the next 3 hours, {}%, the reported description of the weather is: {}""".format(str(city),str(round(temperature)),str(round(minTemp))
+                 ,str(round(maxTemp)),str(round(humidity)),str(round(pop*100)),str(report)))
         else:
             # showing the error message
             speak("I couldn't retrieve the weather conditions. Make sure I'm receiving coordinates from the GNSS")
+    elif 'exit' in query:
+        speak('See you soon!')
+        sys.exit()
     else:
         speak("I heard: " +str(query) + ", but I didn't find any action for this request. Please try again.")
 
 #Try Except for Virtual Assistant
 def virtualAssistant():
-    global fp, porcupine, pa, audio_stream
+    global fp, porcupine, pa, audio_stream, firstLoop
     print("I'm ready")
 
-    porcupine = pvporcupine.create(access_key = 'gbMgD3/fYDE4o7NdQrHd29TcdZIKF9ko6HNePMq2rThUIuLf4br0NA==',keywords=['picovoice'])
+    if firstLoop:
+        speak("Hello, I'm your Virtual Assistant.")
+        firstLoop = False
+
+
+    porcupine = pvporcupine.create(access_key = apiKeys.pvporcupine,keywords=['picovoice'])
 
     pa = pyaudio.PyAudio()
 
@@ -168,7 +194,7 @@ def virtualAssistant():
                     format=pyaudio.paInt16,
                     input=True,
                     frames_per_buffer=porcupine.frame_length)
-
+    playVASound(musicDirPath + "readyBeep.wav")
     try:
         while not mixer.music.get_busy():
             pcm = audio_stream.read(porcupine.frame_length,exception_on_overflow=False)
